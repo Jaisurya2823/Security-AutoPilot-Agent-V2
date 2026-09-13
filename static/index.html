@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Autopilot Agent — Live Ops</title>
+<style>
+  :root {
+    --bg: #05090a;
+    --panel: #0c1315;
+    --panel-2: #101a1c;
+    --line: #1c2b2e;
+    --text: #dce8e5;
+    --muted: #5c716e;
+    --critical: #ff4d4d;
+    --high: #ff9f40;
+    --medium: #f0d264;
+    --low: #5eb3ff;
+    --info: #4a5a57;
+    --executed: #3ca37a;
+    --accent: #4de8c8;
+    --accent-dim: #2b6b60;
+    --glow: 0 0 18px rgba(77, 232, 200, 0.35);
+    --mono: ui-monospace, "IBM Plex Mono", "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 14px;
+    line-height: 1.5;
+    position: relative;
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-image:
+      linear-gradient(rgba(77, 232, 200, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(77, 232, 200, 0.035) 1px, transparent 1px);
+    background-size: 42px 42px;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 0%, transparent 70%);
+  }
+  header, nav.tabs, main, .investigate-panel { position: relative; z-index: 1; }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  header { animation: rise 0.5s ease-out both; }
+  nav.tabs { animation: rise 0.5s ease-out 0.08s both; }
+  header {
+    padding: 28px 32px 20px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  .eyebrow {
+    color: var(--accent);
+    letter-spacing: 0.16em;
+    font-size: 11px;
+    text-transform: uppercase;
+    opacity: 0.85;
+  }
+  h1 {
+    margin: 6px 0 0;
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    text-shadow: 0 0 24px rgba(77, 232, 200, 0.25);
+  }
+  .stats {
+    display: flex;
+    gap: 28px;
+  }
+  .stat { text-align: right; }
+  .stat .n { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+  .stat .l { color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.1em; }
+  .pulse {
+    display: inline-block;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 8px 1px var(--accent);
+    margin-right: 8px;
+    animation: pulse 1.6s infinite ease-in-out;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; } 50% { opacity: 0.35; }
+  }
+  main {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--line);
+  }
+  @media (max-width: 880px) { main { grid-template-columns: 1fr; } }
+  section {
+    background: var(--bg);
+    padding: 24px 28px;
+    min-height: 60vh;
+  }
+  h2 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin: 0 0 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  button {
+    font-family: var(--mono);
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--line);
+    padding: 7px 14px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, color 0.15s ease, background 0.15s ease;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button:focus-visible { outline: none; border-color: var(--accent); box-shadow: var(--glow); }
+  button.approve { border-color: var(--executed); color: var(--executed); }
+  button.approve:hover { background: var(--executed); color: var(--bg); box-shadow: 0 0 16px rgba(60, 163, 122, 0.4); }
+  button.deny { border-color: var(--critical); color: var(--critical); }
+  button.deny:hover { background: var(--critical); color: var(--bg); box-shadow: 0 0 16px rgba(255, 77, 77, 0.35); }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--muted);
+    border-radius: 3px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    transition: border-color 0.15s ease, transform 0.1s ease;
+  }
+  .card:hover { border-color: var(--accent-dim); }
+  .card.sev-critical, .card.sev-high { border-left-color: var(--critical); box-shadow: -1px 0 12px -6px rgba(255, 77, 77, 0.3); }
+  .card.sev-medium { border-left-color: var(--medium); }
+  .card.sev-low, .card.sev-info { border-left-color: var(--low); }
+  .card-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .action { font-weight: 600; }
+  .target { color: var(--low); }
+  .justification { color: var(--muted); margin: 6px 0 10px; font-size: 13px; }
+  .card-actions { display: flex; gap: 8px; }
+  .empty {
+    color: var(--muted);
+    padding: 32px 0;
+    border: 1px dashed var(--line);
+    border-radius: 3px;
+    text-align: center;
+  }
+  .ledger-entry {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--line);
+    font-size: 12.5px;
+  }
+  .ledger-entry:last-child { border-bottom: none; }
+  .ledger-meta { color: var(--muted); }
+  .ev-triage .badge { background: var(--medium); color: #000; }
+  .ev-decide .badge { background: var(--low); color: #000; }
+  .ev-human_gate .badge { background: var(--high); color: #000; }
+  .ev-execute .badge { background: var(--executed); color: #000; }
+  .ev-enrich .badge { background: var(--info); color: var(--text); }
+  .badge {
+    display: inline-block;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 2px 6px;
+    border-radius: 2px;
+    margin-right: 8px;
+  }
+  .toolbar { display: flex; gap: 8px; }
+
+  .conn-banner {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    background: rgba(255, 77, 77, 0.08);
+    border-bottom: 1px solid var(--critical);
+    color: var(--critical);
+    font-size: 12.5px;
+    padding: 9px 32px;
+  }
+  .conn-banner code { background: rgba(255,255,255,0.06); padding: 1px 5px; border-radius: 2px; }
+
+  /* --- Tabs --- */
+  nav.tabs {
+    display: flex;
+    gap: 4px;
+    padding: 0 32px;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+    overflow-x: auto;
+  }
+  nav.tabs button {
+    position: relative;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 13px 16px;
+    color: var(--muted);
+    white-space: nowrap;
+    transition: color 0.15s ease;
+  }
+  nav.tabs button::after {
+    content: "";
+    position: absolute;
+    left: 16px; right: 16px; bottom: 0;
+    height: 2px;
+    background: var(--accent);
+    box-shadow: var(--glow);
+    transform: scaleX(0);
+    transition: transform 0.2s ease;
+  }
+  nav.tabs button:hover { color: var(--text); }
+  nav.tabs button.active { color: var(--accent); }
+  nav.tabs button.active::after { transform: scaleX(1); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* --- Investigation input forms --- */
+  .investigate-panel {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 28px 32px;
+  }
+  .input-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+  @media (max-width: 880px) { .input-grid { grid-template-columns: 1fr; } }
+  .input-card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 18px 20px;
+  }
+  .input-card label {
+    display: block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .input-card input[type="text"]:focus,
+  .input-card textarea:focus,
+  .input-card select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: var(--glow);
+  }
+  .input-card input[type="text"],
+  .input-card textarea,
+  .input-card select {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 8px 10px;
+    border-radius: 3px;
+    margin-bottom: 10px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .input-card textarea { resize: vertical; min-height: 100px; }
+  .input-card input[type="file"] { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+  .input-card .or-divider { text-align: center; color: var(--muted); font-size: 11px; margin: 4px 0 14px; text-transform: uppercase; letter-spacing: 0.08em; }
+  button.primary { border-color: var(--accent); color: var(--accent); }
+  button.primary:hover { background: var(--accent); color: var(--bg); box-shadow: var(--glow); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .results { margin-top: 8px; }
+  .risk-banner {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 16px 20px;
+    border-radius: 3px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    margin-bottom: 18px;
+  }
+  .risk-banner .risk-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 4px; }
+  .risk-banner .risk-value { font-size: 19px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.01em; }
+  .ring-gauge { flex: 0 0 auto; }
+  .ring-gauge-fill { transition: stroke-dashoffset 0.9s cubic-bezier(0.16, 1, 0.3, 1); }
+  .ring-gauge-label { font-size: 16px; font-weight: 700; }
+
+  .finding-group { margin-bottom: 22px; }
+  .finding-group h3 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--accent);
+    opacity: 0.85;
+    margin: 0 0 10px;
+  }
+  .stride-badge { background: var(--info); color: var(--text); }
+  .stride-badge.st-spoofing { background: var(--low); color: #000; }
+  .stride-badge.st-tampering { background: var(--medium); color: #000; }
+  .stride-badge.st-repudiation { background: var(--info); }
+  .stride-badge.st-info_disclosure { background: var(--high); color: #000; }
+  .stride-badge.st-denial_of_service { background: var(--high); color: #000; }
+  .stride-badge.st-elevation_of_privilege { background: var(--critical); }
+
+  .attack-chain { position: relative; padding-left: 8px; }
+  .attack-step {
+    position: relative;
+    display: flex;
+    gap: 16px;
+    padding: 4px 0 22px 0;
+  }
+  .attack-step:last-child { padding-bottom: 4px; }
+  .attack-step::before {
+    /* the connecting rail — drawn per-step so it only spans between nodes */
+    content: "";
+    position: absolute;
+    left: 11px; top: 24px; bottom: 0;
+    width: 1px;
+    background: linear-gradient(var(--accent-dim), var(--line));
+  }
+  .attack-step:last-child::before { display: none; }
+  .attack-step .step-num {
+    position: relative;
+    z-index: 1;
+    flex: 0 0 auto;
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    border: 1px solid var(--accent);
+    background: var(--bg);
+    color: var(--accent);
+    box-shadow: 0 0 10px rgba(77, 232, 200, 0.3);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .attack-step .step-title { font-weight: 600; margin-bottom: 3px; }
+  .attack-step .step-desc { color: var(--muted); font-size: 13px; }
+  .kv-list { font-size: 13px; }
+  .kv-list .row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .kv-list .row:last-child { border-bottom: none; }
+  .kv-list .k { color: var(--muted); }
+  .loading-note { color: var(--accent); font-size: 12px; padding: 10px 0; display: flex; align-items: center; gap: 8px; }
+  .loading-note::before {
+    content: "";
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+    animation: pulse 1s infinite ease-in-out;
+  }
+  .error-note { color: var(--critical); font-size: 12px; padding: 10px 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="eyebrow">Security Alert Autopilot &mdash; Track 4</div>
+    <h1><span class="pulse"></span>Live Ops</h1>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="n" id="stat-total">0</div><div class="l">alerts seen</div></div>
+    <div class="stat"><div class="n" id="stat-pending">0</div><div class="l">awaiting approval</div></div>
+    <div class="stat"><div class="n" id="stat-executed">0</div><div class="l">actions executed</div></div>
+  </div>
+</header>
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="alerts">Alert Triage</button>
+  <button class="tab-btn" data-tab="repo">Repo Investigation</button>
+  <button class="tab-btn" data-tab="deps">Supply Chain</button>
+  <button class="tab-btn" data-tab="phishing">Phishing / Scam</button>
+  <button class="tab-btn" data-tab="website">Website Scan</button>
+</nav>
+
+<div id="conn-banner" class="conn-banner">
+  <span class="pulse" style="background: var(--critical); box-shadow: 0 0 8px var(--critical);"></span>
+  Can't reach the backend at this address — check that <code>python app.py</code> is still running, then this will reconnect automatically.
+</div>
+
+<div id="tab-alerts" class="tab-panel active">
+<main>
+  <section>
+    <h2>Submit an alert</h2>
+    <div class="investigate-panel" style="padding: 0 0 20px;">
+      <div class="input-grid">
+        <div class="input-card">
+          <label for="alert-source">Source</label>
+          <select id="alert-source">
+            <option value="edr">EDR</option>
+            <option value="firewall">Firewall</option>
+            <option value="siem">SIEM</option>
+            <option value="cve-feed">CVE feed</option>
+          </select>
+          <label for="alert-asset-id">Asset ID</label>
+          <input type="text" id="alert-asset-id" placeholder="host-114 / acct-jdoe / web-03">
+          <label for="alert-asset-ip">Asset IP (optional — enables IOC-feed matching)</label>
+          <input type="text" id="alert-asset-ip" placeholder="203.0.113.7">
+        </div>
+        <div class="input-card">
+          <label for="alert-description">Description</label>
+          <textarea id="alert-description" style="min-height: 60px;" placeholder="Brief summary of what was observed"></textarea>
+          <label for="alert-raw-log">Raw log / evidence</label>
+          <textarea id="alert-raw-log" style="min-height: 60px;" placeholder="Paste the actual log line(s) or alert payload"></textarea>
+          <button class="primary" id="alert-submit">Submit alert</button>
+        </div>
+      </div>
+      <div id="alert-submit-error"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Pending approvals</h2>
+    <div id="pending-list"><div class="empty">No actions waiting on a human right now.</div></div>
+  </section>
+
+  <section>
+    <h2>Decision ledger</h2>
+    <div id="ledger-list"><div class="empty">Nothing logged yet. Submit an alert to see the trail.</div></div>
+  </section>
+</main>
+</div>
+
+<div id="tab-repo" class="tab-panel">
+  <div class="investigate-panel">
+    <div class="input-grid">
+      <div class="input-card">
+        <label for="repo-url">GitHub repo URL</label>
+        <input type="text" id="repo-url" placeholder="https://github.com/owner/repo">
+        <div class="or-divider">or</div>
+        <label for="repo-zip">Upload a ZIP</label>
+        <input type="file" id="repo-zip" accept=".zip">
+      </div>
+      <div class="input-card">
+        <label>&nbsp;</label>
+        <p style="color: var(--muted); font-size: 13px; margin: 0 0 14px;">
+          Runs static analysis (languages, frameworks, endpoints, secrets, CI/CD),
+          builds a STRIDE threat model, and chains the findings into a possible attacker path.
+          No code is executed — read-only analysis of what's already there.
+        </p>
+        <button class="primary" id="repo-analyze">Analyze repository</button>
+      </div>
+    </div>
+    <div id="repo-results" class="results"></div>
+  </div>
+</div>
+
+<div id="tab-deps" class="tab-panel">
+  <div class="investigate-panel">
+    <div class="input-grid">
+      <div class="input-card">
+        <label for="deps-filename">Manifest type</label>
+        <select id="deps-filename">
+          <option value="requirements.txt">requirements.txt (PyPI)</option>
+          <option value="package.json">package.json (npm)</option>
+        </select>
+        <label for="deps-content">Paste manifest contents</label>
+        <textarea id="deps-content" placeholder="flask==3.0.0&#10;requests==2.31.0"></textarea>
+        <div class="or-divider">or</div>
+        <label for="deps-file">Upload a file</label>
+        <input type="file" id="deps-file" accept=".txt,.json">
+      </div>
+      <div class="input-card">
+        <label>&nbsp;</label>
+        <p style="color: var(--muted); font-size: 13px; margin: 0 0 14px;">
+          Checks every pinned dependency against OSV.dev's real vulnerability database,
+          flags likely typosquats, and surfaces npm lifecycle scripts (postinstall/etc.)
+          that run automatically on install.
+        </p>
+        <button class="primary" id="deps-analyze">Analyze dependencies</button>
+      </div>
+    </div>
+    <div id="deps-results" class="results"></div>
+  </div>
+</div>
+
+<div id="tab-phishing" class="tab-panel">
+  <div class="investigate-panel">
+    <div class="input-grid">
+      <div class="input-card" style="grid-column: 1 / -1;">
+        <label for="phish-text">Paste a message (email / SMS / chat text)</label>
+        <textarea id="phish-text" style="min-height: 140px;" placeholder="Paste the full message, including any links, here."></textarea>
+        <button class="primary" id="phish-analyze">Analyze message</button>
+      </div>
+    </div>
+    <div id="phish-results" class="results"></div>
+  </div>
+</div>
+
+<div id="tab-website" class="tab-panel">
+  <div class="investigate-panel">
+    <div class="input-grid">
+      <div class="input-card" style="grid-column: 1 / -1;">
+        <label for="website-url">Live website URL</label>
+        <input type="text" id="website-url" placeholder="https://your-friends-app.example.com">
+        <button class="primary" id="website-analyze">Scan website</button>
+        <p style="color: var(--muted); font-size: 12px; margin: 10px 0 0;">
+          Passive checks only — security headers, cookie flags, TLS, CORS, and common
+          accidental-exposure paths (.env, .git/config, etc). No login attempts, no
+          injection payloads, nothing that touches the site beyond a normal page load.
+          For scanning a friend's deployed app when you don't have their source code —
+          use the Repo Investigation tab instead if you do.
+        </p>
+      </div>
+    </div>
+    <div id="website-results" class="results"></div>
+  </div>
+</div>
+
+
+<script>
+const POLL_MS = 2500;
+
+async function fetchJSON(url, opts) {
+  const res = await fetch(url, opts);
+  return res.json();
+}
+
+let backendReachable = true;
+function setBackendStatus(reachable) {
+  if (reachable === backendReachable) return; // only touch the DOM on a real state change
+  backendReachable = reachable;
+  const banner = document.getElementById('conn-banner');
+  banner.style.display = reachable ? 'none' : 'flex';
+}
+
+function sevClass(sev) {
+  return 'sev-' + (sev || 'info').toLowerCase();
+}
+
+// Security fix: render functions below interpolate data that traces
+// back to untrusted input — user-submitted alert fields, pasted
+// manifests/messages, scanned-repo file paths, third-party API data.
+// escapeHtml() is applied to every data value; only hardcoded markup
+// this file writes itself is left unescaped.
+function escapeHtml(value) {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+async function refreshPending() {
+  const pending = await fetchJSON('/pending');
+  const el = document.getElementById('pending-list');
+  document.getElementById('stat-pending').textContent = pending.length;
+
+  if (pending.length === 0) {
+    el.innerHTML = '<div class="empty">No actions waiting on a human right now.</div>';
+    return;
+  }
+
+  el.innerHTML = pending.map(p => {
+    const req = p.approval_request;
+    return `
+      <div class="card">
+        <div class="card-row">
+          <span class="action">${escapeHtml(req.action)}</span>
+          <span class="target">${escapeHtml(req.target)}</span>
+        </div>
+        <div class="justification">${escapeHtml(req.justification)}</div>
+        <div class="card-actions">
+          <button class="approve" onclick="decide('${encodeURIComponent(p.alert_id)}', true)">approve</button>
+          <button class="deny" onclick="decide('${encodeURIComponent(p.alert_id)}', false)">deny</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function refreshLedger() {
+  const entries = await fetchJSON('/history');
+  const el = document.getElementById('ledger-list');
+  document.getElementById('stat-total').textContent =
+    new Set(entries.map(e => e.alert_id)).size;
+  document.getElementById('stat-executed').textContent =
+    entries.filter(e => e.event === 'execute' && (e.log_line || '').startsWith('EXECUTED')).length;
+
+  if (entries.length === 0) {
+    el.innerHTML = '<div class="empty">Nothing logged yet. Submit or simulate an alert to see the trail.</div>';
+    return;
+  }
+
+  el.innerHTML = entries.slice(-40).reverse().map(e => {
+    const t = new Date(e.ts * 1000).toLocaleTimeString();
+    let detail = '';
+    if (e.event === 'triage' && e.triage) detail = `${escapeHtml(e.triage.severity.toUpperCase())} / ${escapeHtml(e.triage.threat_category)} &mdash; ${escapeHtml(e.triage.reasoning)}`;
+    else if (e.event === 'decide' && e.plan) detail = `${escapeHtml(e.plan.action)} &rarr; ${escapeHtml(e.plan.target)}`;
+    else if (e.event === 'human_gate') detail = e.approved ? `approved (${escapeHtml(e.note || 'auto')})` : `denied (${escapeHtml(e.note || 'no reason given')})`;
+    else if (e.event === 'execute') detail = escapeHtml(e.log_line);
+    else if (e.event === 'enrich' && e.threat_intel) detail = e.threat_intel.known_bad_ip ? 'known-bad indicator matched' : 'no prior indicators matched';
+
+    return `
+      <div class="ledger-entry ev-${escapeHtml(e.event)}">
+        <span class="badge">${escapeHtml(e.event)}</span>
+        <span class="ledger-meta">${escapeHtml(t)} &middot; ${escapeHtml(e.alert_id)}</span><br>
+        ${detail}
+      </div>`;
+  }).join('');
+}
+
+async function decide(alertId, approved) {
+  try {
+    await fetchJSON(`/approve/${alertId}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({approved, note: approved ? 'approved via dashboard' : 'denied via dashboard'})
+    });
+    setBackendStatus(true);
+  } catch (err) {
+    setBackendStatus(false);
+    return;
+  }
+  refreshAll();
+}
+
+document.getElementById('alert-submit').addEventListener('click', async () => {
+  const btn = document.getElementById('alert-submit');
+  const source = document.getElementById('alert-source').value;
+  const assetId = document.getElementById('alert-asset-id').value.trim();
+  const assetIp = document.getElementById('alert-asset-ip').value.trim();
+  const description = document.getElementById('alert-description').value.trim();
+  const rawLog = document.getElementById('alert-raw-log').value.trim();
+
+  if (!assetId || !description || !rawLog) {
+    document.getElementById('alert-submit-error').innerHTML =
+      '<div class="error-note">Asset ID, description, and raw log are required.</div>';
+    return;
+  }
+
+  btn.disabled = true;
+  document.getElementById('alert-submit-error').innerHTML = '<div class="loading-note">Submitting for triage…</div>';
+  try {
+    await fetchJSON('/alerts', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        source, asset_id: assetId, asset_ip: assetIp || null,
+        description, raw_log: rawLog,
+      }),
+    });
+    document.getElementById('alert-submit-error').innerHTML = '';
+    document.getElementById('alert-description').value = '';
+    document.getElementById('alert-raw-log').value = '';
+    setBackendStatus(true);
+    refreshAll();
+  } catch (err) {
+    setBackendStatus(false);
+    document.getElementById('alert-submit-error').innerHTML =
+      `<div class="error-note">Submission failed — ${err.message}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function refreshAll() {
+  Promise.all([refreshPending(), refreshLedger()])
+    .then(() => setBackendStatus(true))
+    .catch(() => setBackendStatus(false)); // most likely cause: the Flask server isn't running
+}
+
+refreshAll();
+setInterval(refreshAll, POLL_MS);
+
+// ---------- Tabs ----------
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ---------- Shared render helpers ----------
+const SEVERITY_FILL_PCT = { info: 12, low: 32, medium: 56, high: 80, critical: 100 };
+const SEVERITY_COLOR_VAR = {
+  info: '--info', low: '--low', medium: '--medium', high: '--high', critical: '--critical'
+};
+
+function ringGauge(pct, colorVar, size, strokeWidth) {
+  size = size || 56;
+  strokeWidth = strokeWidth || 5;
+  const r = (size / 2) - strokeWidth;
+  const c = 2 * Math.PI * r;
+  const id = 'rg' + Math.random().toString(36).slice(2, 9);
+  // Rendered empty (full offset) and animated to its true value on the
+  // next frame, via the .ring-gauge-fill CSS transition — a sweep-in
+  // rather than a static number, so the reading feels measured live.
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" class="ring-gauge" data-final-offset="${c - (pct / 100) * c}" data-circumference="${c}" id="${id}">
+    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="var(--line)" stroke-width="${strokeWidth}"/>
+    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="var(${colorVar})" stroke-width="${strokeWidth}"
+      stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${c}"
+      transform="rotate(-90 ${size/2} ${size/2})" class="ring-gauge-fill"/>
+  </svg>`;
+}
+
+function animateGauges(container) {
+  container.querySelectorAll('.ring-gauge').forEach(svg => {
+    const fillCircle = svg.querySelector('.ring-gauge-fill');
+    const target = svg.dataset.finalOffset;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      fillCircle.style.strokeDashoffset = target;
+    }));
+  });
+}
+
+function riskBanner(label, riskValue) {
+  const sev = (riskValue || 'info').toLowerCase();
+  const pct = SEVERITY_FILL_PCT[sev] ?? 12;
+  const colorVar = SEVERITY_COLOR_VAR[sev] ?? '--info';
+  return `<div class="risk-banner">
+    ${ringGauge(pct, colorVar)}
+    <div>
+      <div class="risk-label">${label}</div>
+      <div class="risk-value" style="color: var(${colorVar})">${sev.toUpperCase()}</div>
+    </div>
+  </div>`;
+}
+
+function scoreGauge(score, size, strokeWidth) {
+  const colorVar = score >= 80 ? '--executed' : score >= 50 ? '--high' : '--critical';
+  return `<div style="position: relative; display: inline-flex; align-items: center; justify-content: center;">
+    ${ringGauge(score, colorVar, size, strokeWidth)}
+    <div class="ring-gauge-label" style="position: absolute; color: var(${colorVar}); font-size: ${size <= 40 ? '11px' : '15px'};">${score}</div>
+  </div>`;
+}
+
+function trustScoreClass(score) {
+  if (score >= 80) return 'good';
+  if (score >= 50) return 'mid';
+  return 'bad';
+}
+
+function setLoading(elId, message) {
+  document.getElementById(elId).innerHTML = `<div class="loading-note">${message}</div>`;
+}
+
+function setError(elId, message) {
+  document.getElementById(elId).innerHTML = `<div class="error-note">${message}</div>`;
+}
+
+// ---------- Repo Investigation ----------
+async function submitRepo(body, isFormData) {
+  const opts = isFormData
+    ? { method: 'POST', body }
+    : { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) };
+  const res = await fetch('/investigate/repo', opts);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'request failed');
+  return data;
+}
+
+document.getElementById('repo-analyze').addEventListener('click', async () => {
+  const btn = document.getElementById('repo-analyze');
+  const url = document.getElementById('repo-url').value.trim();
+  const fileInput = document.getElementById('repo-zip');
+
+  if (!url && fileInput.files.length === 0) {
+    setError('repo-results', 'Provide a GitHub URL or upload a ZIP.');
+    return;
+  }
+
+  btn.disabled = true;
+  setLoading('repo-results', 'Scanning repository, building threat model, chaining attack path…');
+  try {
+    let data;
+    if (fileInput.files.length > 0) {
+      const form = new FormData();
+      form.append('zip', fileInput.files[0]);
+      data = await submitRepo(form, true);
+    } else {
+      data = await submitRepo({ repo_url: url });
+    }
+    renderRepoResults(data);
+  } catch (err) {
+    setError('repo-results', `Repository analysis failed — ${err.message}`);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function renderRepoResults(data) {
+  const intel = data.repo_intel, tm = data.threat_model, ap = data.attack_path;
+
+  const threatsHtml = tm.threats.length === 0
+    ? '<div class="empty">No STRIDE threats identified.</div>'
+    : tm.threats.map(t => `
+      <div class="card ${sevClass(t.severity)}">
+        <div class="card-row">
+          <span class="action"><span class="badge stride-badge st-${escapeHtml(t.stride_category)}">${escapeHtml(t.stride_category.replace('_', ' '))}</span>${escapeHtml(t.title)}</span>
+          <span class="target">${escapeHtml(t.severity.toUpperCase())}</span>
+        </div>
+        <div class="justification">${escapeHtml(t.description)}</div>
+        <div class="ledger-meta">${escapeHtml(t.related_entry_point)}</div>
+      </div>`).join('');
+
+  const stepsHtml = ap.steps.length === 0
+    ? '<div class="empty">No chained attack path — findings did not combine into a realistic sequence.</div>'
+    : `<div class="attack-chain">${ap.steps.map(s => `
+      <div class="attack-step">
+        <div class="step-num">${escapeHtml(s.order)}</div>
+        <div>
+          <div class="step-title">${escapeHtml(s.title)}</div>
+          <div class="step-desc">${escapeHtml(s.description)}</div>
+        </div>
+      </div>`).join('')}</div>`;
+
+  const el = document.getElementById('repo-results');
+  el.innerHTML = `
+    ${riskBanner('Overall risk', tm.risk_score)}
+    <div class="finding-group">
+      <h3>Architecture summary</h3>
+      <div class="justification" style="font-size: 13px;">${escapeHtml(tm.repo_summary)}</div>
+    </div>
+    <div class="finding-group">
+      <h3>Detected stack</h3>
+      <div class="kv-list">
+        <div class="row"><span class="k">Languages</span><span>${escapeHtml(intel.languages.join(', ')) || '—'}</span></div>
+        <div class="row"><span class="k">Frameworks</span><span>${escapeHtml(intel.frameworks.join(', ')) || '—'}</span></div>
+        <div class="row"><span class="k">Database usage</span><span>${escapeHtml(intel.database_usage.join(', ')) || '—'}</span></div>
+        <div class="row"><span class="k">Entry points found</span><span>${intel.endpoints.length}</span></div>
+        <div class="row"><span class="k">Secrets found</span><span>${intel.secrets.length}</span></div>
+        <div class="row"><span class="k">Cloud/deploy hints</span><span>${escapeHtml(intel.cloud_hints.join(', ')) || '—'}</span></div>
+      </div>
+    </div>
+    <div class="finding-group">
+      <h3>STRIDE threats (${tm.threats.length})</h3>
+      ${threatsHtml}
+    </div>
+    <div class="finding-group">
+      <h3>Attack path</h3>
+      <div class="justification" style="font-size: 13px; margin-bottom: 10px;">${escapeHtml(ap.narrative)}</div>
+      ${stepsHtml}
+    </div>
+    <div class="finding-group">
+      <h3>Recommendations</h3>
+      ${tm.recommendations.length === 0 ? '<div class="empty">None.</div>' :
+        '<ul style="margin: 0; padding-left: 20px; color: var(--text);">' +
+        tm.recommendations.map(r => `<li style="margin-bottom: 6px;">${escapeHtml(r)}</li>`).join('') + '</ul>'}
+    </div>`;
+  animateGauges(el);
+}
+
+// ---------- Supply Chain ----------
+document.getElementById('deps-analyze').addEventListener('click', async () => {
+  const btn = document.getElementById('deps-analyze');
+  const fileInput = document.getElementById('deps-file');
+  const filename = document.getElementById('deps-filename').value;
+  const content = document.getElementById('deps-content').value;
+
+  if (!content.trim() && fileInput.files.length === 0) {
+    setError('deps-results', 'Paste manifest contents or upload a file.');
+    return;
+  }
+
+  btn.disabled = true;
+  setLoading('deps-results', 'Querying OSV.dev for known vulnerabilities…');
+  try {
+    let res;
+    if (fileInput.files.length > 0) {
+      const form = new FormData();
+      form.append('manifest', fileInput.files[0]);
+      res = await fetch('/investigate/dependencies', { method: 'POST', body: form });
+    } else {
+      res = await fetch('/investigate/dependencies', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ filename, content })
+      });
+    }
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'request failed');
+    renderDepsResults(data);
+  } catch (err) {
+    setError('deps-results', `Dependency analysis failed — ${err.message}`);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function renderDepsResults(data) {
+  const flagged = data.findings.filter(f => f.vulns.length > 0 || f.typosquat_suspect_of || f.suspicious_install_script);
+  const findingsHtml = flagged.length === 0
+    ? '<div class="empty">No issues found in resolved (pinned) packages.</div>'
+    : flagged.map(f => {
+        const reasons = [];
+        if (f.typosquat_suspect_of) reasons.push(`possible typosquat of <strong>${escapeHtml(f.typosquat_suspect_of)}</strong>`);
+        if (f.suspicious_install_script) reasons.push(`lifecycle script: <code>${escapeHtml(f.suspicious_install_script)}</code>`);
+        f.vulns.forEach(v => reasons.push(`${escapeHtml(v.id)} (${escapeHtml(v.severity)}) — ${escapeHtml(v.summary)}${v.fixed_version ? ` — fixed in ${escapeHtml(v.fixed_version)}` : ''}`));
+        return `
+          <div class="card ${trustScoreClass(f.trust_score) === 'bad' ? 'sev-high' : trustScoreClass(f.trust_score) === 'mid' ? 'sev-medium' : 'sev-info'}">
+            <div class="card-row">
+              <span class="action">${escapeHtml(f.package.name)}${f.package.version ? '@' + escapeHtml(f.package.version) : ''}</span>
+              ${scoreGauge(f.trust_score, 34, 4)}
+            </div>
+            <div class="justification">${reasons.join('<br>')}</div>
+          </div>`;
+      }).join('');
+
+  const unresolvedHtml = data.unresolved_packages.length === 0 ? '' : `
+    <div class="finding-group">
+      <h3>Unresolved (unpinned — not checked)</h3>
+      <div class="justification" style="font-size: 13px;">${escapeHtml(data.unresolved_packages.join(', '))}</div>
+    </div>`;
+
+  const el = document.getElementById('deps-results');
+  el.innerHTML = `
+    ${riskBanner('Overall risk', data.risk_score)}
+    <div class="finding-group">
+      <h3>Overall trust score</h3>
+      ${scoreGauge(data.overall_trust_score, 72, 6)}
+    </div>
+    <div class="finding-group">
+      <h3>Flagged packages (${flagged.length} of ${data.findings.length} resolved)</h3>
+      ${findingsHtml}
+    </div>
+    ${unresolvedHtml}`;
+  animateGauges(el);
+}
+
+// ---------- Phishing / Scam ----------
+document.getElementById('phish-analyze').addEventListener('click', async () => {
+  const btn = document.getElementById('phish-analyze');
+  const text = document.getElementById('phish-text').value;
+  if (!text.trim()) {
+    setError('phish-results', 'Paste a message to analyze.');
+    return;
+  }
+  btn.disabled = true;
+  setLoading('phish-results', 'Checking URLs and message language…');
+  try {
+    const res = await fetch('/investigate/phishing', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ text })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'request failed');
+    renderPhishResults(data);
+  } catch (err) {
+    setError('phish-results', `Message analysis failed — ${err.message}`);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function renderPhishResults(data) {
+  const urlsHtml = data.url_findings.length === 0 ? '<div class="empty">No URLs found in the message.</div>' :
+    data.url_findings.map(u => {
+      const flags = [];
+      if (u.is_ip_literal) flags.push('IP address instead of domain');
+      if (u.is_punycode) flags.push('punycode/homograph domain');
+      if (u.suspicious_tld) flags.push('commonly-abused TLD');
+      if (u.is_shortener) flags.push('URL shortener (hides destination)');
+      if (u.brand_impersonation_of) flags.push(`resembles ${escapeHtml(u.brand_impersonation_of)}`);
+      if (u.suspicious_subdomain_nesting) flags.push('brand name used as a subdomain, not the real domain');
+      return `
+        <div class="card ${u.risk_score >= 50 ? 'sev-high' : u.risk_score > 0 ? 'sev-medium' : 'sev-info'}">
+          <div class="card-row"><span class="action">${escapeHtml(u.url)}</span><span class="target">${u.risk_score}/100</span></div>
+          <div class="justification">${flags.length ? flags.join(', ') : 'No structural red flags detected.'}</div>
+        </div>`;
+    }).join('');
+
+  const el = document.getElementById('phish-results');
+  el.innerHTML = `
+    ${riskBanner('Risk assessment', data.risk_score)}
+    <div class="finding-group">
+      <h3>Analyst reasoning</h3>
+      <div class="justification" style="font-size: 13px;">${escapeHtml(data.llm_reasoning)}</div>
+    </div>
+    <div class="finding-group">
+      <h3>Recommended action</h3>
+      <div class="justification" style="font-size: 13px; color: var(--text);">${escapeHtml(data.recommended_action)}</div>
+    </div>
+    <div class="finding-group">
+      <h3>URLs found (${data.url_findings.length})</h3>
+      ${urlsHtml}
+    </div>
+    ${data.matched_keywords.length > 0 ? `
+    <div class="finding-group">
+      <h3>Language patterns matched</h3>
+      <div class="justification" style="font-size: 13px;">${escapeHtml(data.matched_keywords.join(', '))}</div>
+    </div>` : ''}`;
+  animateGauges(el);
+}
+
+document.getElementById('website-analyze').addEventListener('click', async () => {
+  const btn = document.getElementById('website-analyze');
+  const url = document.getElementById('website-url').value.trim();
+  if (!url) {
+    setError('website-results', 'Enter a URL to scan.');
+    return;
+  }
+  btn.disabled = true;
+  setLoading('website-results', 'Checking headers, cookies, TLS, and common exposed paths…');
+  try {
+    const res = await fetch('/investigate/website', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ url })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'request failed');
+    renderWebsiteResults(data);
+  } catch (err) {
+    setError('website-results', `Website scan failed — ${err.message}`);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function renderWebsiteResults(data) {
+  const findingsHtml = data.findings.length === 0
+    ? '<div class="empty">No issues found by these checks.</div>'
+    : data.findings.map(f => `
+      <div class="card ${sevClass(f.severity)}">
+        <div class="card-row">
+          <span class="action"><span class="badge">${escapeHtml(f.category)}</span>${escapeHtml(f.title)}</span>
+          <span class="target">${escapeHtml(f.severity.toUpperCase())}</span>
+        </div>
+        <div class="justification">${escapeHtml(f.description)}</div>
+      </div>`).join('');
+
+  const el = document.getElementById('website-results');
+  el.innerHTML = `
+    ${riskBanner('Overall risk', data.risk_score)}
+    <div class="finding-group">
+      <h3>Summary</h3>
+      <div class="justification" style="font-size: 13px;">${escapeHtml(data.summary)}</div>
+      <div class="kv-list" style="margin-top: 10px;">
+        <div class="row"><span class="k">Requested URL</span><span>${escapeHtml(data.url)}</span></div>
+        <div class="row"><span class="k">Final URL (after redirects)</span><span>${escapeHtml(data.final_url)}</span></div>
+      </div>
+    </div>
+    <div class="finding-group">
+      <h3>Findings (${data.findings.length})</h3>
+      ${findingsHtml}
+    </div>`;
+  animateGauges(el);
+}
+</script>
+</body>
+</html>

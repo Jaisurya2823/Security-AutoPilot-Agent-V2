@@ -1,0 +1,97 @@
+digraph architecture {
+  rankdir=TB;
+  size="16,12";
+  ratio=compress;
+  nodesep=0.4;
+  ranksep=0.7;
+  bgcolor="#05090a";
+  fontname="Helvetica";
+  node [fontname="Helvetica" fontsize=11 style=filled fontcolor="#05090a"];
+  edge [fontname="Helvetica" fontsize=9 color="#5c716e" fontcolor="#dce8e5"];
+
+  subgraph cluster_sources {
+    label="Inputs";
+    fontcolor="#dce8e5"; color="#1c2b2e";
+    alert [label="Security Alert\n(EDR / SIEM / firewall)" fillcolor="#5eb3ff"];
+    repo  [label="GitHub URL\nor ZIP upload" fillcolor="#5eb3ff"];
+    deps  [label="requirements.txt\n/ package.json" fillcolor="#5eb3ff"];
+    msg   [label="Email / SMS\n/ chat text" fillcolor="#5eb3ff"];
+    url   [label="Live Website URL" fillcolor="#5eb3ff"];
+  }
+
+  subgraph cluster_infra {
+    label="API Layer (app.py)";
+    fontcolor="#dce8e5"; color="#1c2b2e";
+    ratelimit    [label="Rate Limiter\n(per-IP sliding window)" fillcolor="#ff9f40"];
+    orchestrator [label="Master Orchestrator\n(src/orchestrator.py)" shape=diamond fillcolor="#4de8c8"];
+  }
+
+  subgraph cluster_triage {
+    label="Alert Triage  (LangGraph StateGraph)";
+    fontcolor="#dce8e5"; color="#1c2b2e";
+    enrich  [label="enrich\n(FireHOL IOC feed + NVD CVE)" fillcolor="#5c716e" fontcolor="#dce8e5"];
+    triage  [label="triage\n(Groq)" fillcolor="#f0d264"];
+    decide  [label="decide\n(APPROVAL_SEVERITY_FLOOR\n+ DESTRUCTIVE_ACTIONS gate)" fillcolor="#f0d264"];
+    gate    [label="human_gate\ninterrupt() + SQLite checkpointer" fillcolor="#ff9f40"];
+    execute [label="execute\n(webhook fail-closed)" fillcolor="#3ca37a"];
+    enrich -> triage -> decide -> gate -> execute;
+  }
+
+  subgraph cluster_repo {
+    label="Repo Investigation";
+    fontcolor="#dce8e5"; color="#1c2b2e";
+    repo_intel   [label="repo_intel\n(static analysis +\nentropy secret detection)" fillcolor="#5c716e" fontcolor="#dce8e5"];
+    threat_model [label="threat_model\n(STRIDE + Groq)" fillcolor="#f0d264"];
+    attack_path  [label="attack_path\n(Groq)" fillcolor="#f0d264"];
+    repo_intel -> threat_model -> attack_path;
+  }
+
+  subgraph cluster_deps {
+    label="Supply Chain";
+    fontcolor="#dce8e5"; color="#1c2b2e";
+    manifest_parser [label="manifest_parser" fillcolor="#5c716e" fontcolor="#dce8e5"];
+    supply_chain    [label="supply_chain\n(OSV.dev + CVSS v3)" fillcolor="#f0d264"];
+    manifest_parser -> supply_chain;
+  }
+
+  subgraph cluster_web {
+    label="Website Scanner";
+    fontcolor="#dce8e5"; color="#1c2b2e";
+    ssrf_check  [label="SSRF Protection\n(reject private/loopback/\ncloud-metadata IPs)" fillcolor="#ff4d4d" fontcolor="#dce8e5"];
+    web_scanner [label="web_scanner\n(headers / cookies / TLS /\nCORS / exposed paths)" fillcolor="#f0d264"];
+    ssrf_check -> web_scanner;
+  }
+
+  phishing [label="phishing\n(URL heuristics + bare-domain\nsupport + Groq)" fillcolor="#f0d264"];
+
+  audit     [label="audit_log.py\n(append-only JSONL)" fillcolor="#5c716e" fontcolor="#dce8e5" shape=cylinder];
+  groq      [label="Groq API\n(gpt-oss-120b / 20b)" shape=box3d fillcolor="#ff4d4d"];
+  osv       [label="OSV.dev\n(public vuln DB)" shape=box3d fillcolor="#ff4d4d"];
+  firehol   [label="FireHOL Blocklist\n(live IP threat feed)" shape=box3d fillcolor="#ff4d4d"];
+  render    [label="Render\n(gunicorn + Docker)" shape=box3d fillcolor="#ff4d4d"];
+  dashboard [label="Dashboard\n(5 tabs: Alert Triage / Repo /\nSupply Chain / Phishing / Website)" fillcolor="#5eb3ff"];
+  human     [label="Human\nReviewer" shape=oval fillcolor="#dce8e5"];
+
+  alert -> ratelimit; repo -> ratelimit; deps -> ratelimit; msg -> ratelimit; url -> ratelimit;
+  ratelimit -> orchestrator;
+  orchestrator -> enrich;
+  orchestrator -> repo_intel;
+  orchestrator -> manifest_parser;
+  orchestrator -> phishing;
+  orchestrator -> ssrf_check;
+
+  triage -> groq [dir=both]; decide -> groq [dir=both];
+  threat_model -> groq [dir=both]; attack_path -> groq [dir=both];
+  phishing -> groq [dir=both];
+  supply_chain -> osv [dir=both];
+  enrich -> firehol [dir=both];
+
+  enrich -> audit [style=dashed]; triage -> audit [style=dashed];
+  decide -> audit [style=dashed]; gate -> audit [style=dashed]; execute -> audit [style=dashed];
+
+  gate -> dashboard [label="pending approvals"];
+  attack_path -> dashboard; supply_chain -> dashboard;
+  phishing -> dashboard; web_scanner -> dashboard;
+  dashboard -> human [dir=both label="approve / deny\n(alerts only)"];
+  render -> ratelimit [style=dashed label="hosts backend"];
+}

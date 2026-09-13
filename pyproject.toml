@@ -1,0 +1,23 @@
+[project]
+name = "security-autopilot-agent"
+version = "0.1.0"
+description = "Autonomous AI security platform for alert triage, threat modeling, supply-chain analysis, phishing/scam investigation, attack-path reasoning, and human-approved remediation."
+readme = "README.md"
+license = "MIT"
+authors = [
+    { name = "Jai Surya P" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "audioop-lts>=0.2.2",
+    "flask>=3.0,<4.0",
+    "groq>=1.5,<2.0",
+    "langchain-core>=1.4,<2.0",
+    "langgraph>=1.2,<2.0",
+    "langgraph-checkpoint-sqlite>=3.1,<4.0",
+    "python-dotenv>=1.0,<2.0",
+    "requests>=2.31,<3.0",
+    "tldextract>=5.1,<6.0",
+    "gunicorn>=26.0,<27.0",
+    "pytest>=9.1.1",
+]

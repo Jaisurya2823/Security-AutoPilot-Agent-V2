@@ -1,0 +1,14 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+.env
+# Runtime data (audit log, graph checkpoints) — never commit real data
+audit_log.jsonl
+graph_checkpoints.sqlite3

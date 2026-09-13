@@ -1,0 +1,9 @@
+langgraph>=1.2,<2.0
+langchain-core>=1.4,<2.0
+groq>=1.5,<2.0
+flask>=3.0,<4.0
+python-dotenv>=1.0,<2.0
+requests>=2.31,<3.0
+tldextract>=5.1,<6.0
+langgraph-checkpoint-sqlite>=3.1,<4.0
+gunicorn>=26.0,<27.0

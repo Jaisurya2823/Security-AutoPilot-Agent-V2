@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: security-autopilot-agent
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /healthz
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false  # set manually in the Render dashboard, never committed
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: GROQ_MODEL_FAST
+        value: openai/gpt-oss-20b
+      - key: APPROVAL_SEVERITY_FLOOR
+        value: high
+      - key: ENABLE_LIVE_CVE_LOOKUP
+        value: "false"
+      - key: OSV_API_URL
+        value: https://api.osv.dev/v1
+      - key: IOC_FEED_URL
+        value: https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset
+      - key: IOC_FEED_CACHE_SECONDS
+        value: "21600"
+      - key: REMEDIATION_WEBHOOK_URL
+        sync: false  # set manually — your real SOAR/firewall/EDR/IdP automation endpoint. Leave unset to run fail-closed.
+      - key: REMEDIATION_WEBHOOK_TIMEOUT_SECONDS
+        value: "10"
+      - key: GRAPH_CHECKPOINT_PATH
+        value: /var/data/graph_checkpoints.sqlite3
+        # NOTE: Render's default filesystem is ephemeral — this path
+        # only survives a crash/process restart, not a redeploy, unless
+        # you attach a Render persistent disk mounted at /var/data.
+        # Without one, this still works exactly like local disk: fine
+        # for a single always-on instance, not a guarantee across deploys.
